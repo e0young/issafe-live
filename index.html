@@ -122,6 +122,16 @@ button{font-family:inherit; font-size:inherit; cursor:pointer}
 .survey .sv-d{font-size:12.5px; line-height:1.55; opacity:.85; margin-top:4px}
 .survey .sv-go{font-size:13px; font-weight:700; margin-top:10px}
 
+/* survey popup */
+.modal{position:fixed; inset:0; z-index:50; background:rgba(9,20,40,.6);
+  display:flex; align-items:center; justify-content:center; padding:20px}
+.mbox{width:100%; max-width:360px; background:var(--surface); border-radius:18px; padding:22px 20px;
+  box-shadow:0 20px 50px rgba(0,0,0,.3); text-align:center; animation:pop .25s cubic-bezier(.2,.8,.3,1)}
+@keyframes pop{from{transform:scale(.94); opacity:0} to{transform:none; opacity:1}}
+.mbox .mt{font-size:18px; font-weight:800; letter-spacing:-.02em; text-wrap:balance}
+.mbox .md{font-size:13px; color:var(--ink-2); line-height:1.6; margin:8px 0 18px}
+.mbox .btn{display:block; text-decoration:none; text-align:center}
+
 /* question board */
 .compose textarea{width:100%; border:1.5px solid var(--line); border-radius:11px; padding:12px;
   font-family:inherit; font-size:15px; line-height:1.5; resize:none; color:var(--ink); background:var(--field)}
@@ -432,6 +442,10 @@ const myVote = id => {
   return v && v[state.cid] ? v[state.cid].opt : null;
 };
 const surveyOpen = () => !!(state.db.meta && state.db.meta.survey);
+const surveyAt = () => (state.db.meta && state.db.meta.surveyAt) || 0;
+// 관리자가 설문을 다시 켜면 닫았던 사람에게도 한 번 더 뜬다
+const showSurveyPopup = () => surveyOpen() && !state.openSheet && LS.get('svdone', 0) !== surveyAt();
+function dismissSurvey(){ LS.set('svdone', surveyAt()); render(); }
 // 질문판 안내 문구: 행사 전('pre')과 시연 중('live')을 관리자가 전환한다
 const phase = () => ((state.db.meta && state.db.meta.phase) === 'live') ? 'live' : 'pre';
 const COMPOSE_T = {
@@ -476,6 +490,22 @@ function render(){
   if(state.screen==='board' && state.openSheet){
     document.body.insertAdjacentHTML('beforeend', viewPoll(state.openSheet));
   }
+
+  const oldm = document.getElementById('mo'); if(oldm) oldm.remove();
+  if(state.screen==='board' && showSurveyPopup()){
+    document.body.insertAdjacentHTML('beforeend', viewSurveyPopup());
+  }
+}
+
+function viewSurveyPopup(){
+  return `<div class="modal" id="mo">
+    <div class="mbox">
+      <div class="mt">설문에 의견을 남겨주세요</div>
+      <div class="md">주시는 의견은 모두 읽고 2단계(2027~2028) 개발 계획에 반영하겠습니다.<br>필수 입력은 소속뿐입니다.</div>
+      <a class="btn" href="${SURVEY_URL}" target="_blank" rel="noopener" onclick="dismissSurvey()">설문 열기</a>
+      <button class="btn btn-ghost" style="margin-top:8px" onclick="dismissSurvey()">나중에 하기</button>
+    </div>
+  </div>`;
 }
 
 function header(right){
@@ -584,7 +614,6 @@ function qCard(q){
       <span class="chip chip-aff" style="background:${a.color}">${a.name}</span>
       <span class="chip ${isLive?'chip-live':'chip-pre'}">${isLive?'현장':'사전'}</span>
       ${mine?'<span class="chip chip-pre">내 질문</span>':''}
-      ${(q.done && !q.answer)?'<span class="chip chip-done">현장 답변함</span>':''}
       <span class="time">${q.t ? hhmm(q.t) : ''}</span>
     </div>
     <div class="body">${esc(q.text)}</div>
@@ -805,7 +834,7 @@ function adminQCard(q){
     <div class="meta">
       <span class="chip chip-aff" style="background:${a.color}">${a.name}</span>
       <span class="chip ${isLive?'chip-live':'chip-pre'}">${isLive?'현장':'사전'}</span>
-      ${q.done?'<span class="chip chip-done">답변함</span>':''}
+      ${q.done?'<span class="chip chip-done">처리함</span>':''}
       <span class="time">${q.t ? hhmm(q.t) : ''}</span>
     </div>
     <div class="body">${esc(q.text)}</div>
@@ -820,7 +849,7 @@ function adminQCard(q){
         <button class="mini primary" onclick="saveAns('${q.id}')">저장</button>
       </div>`
     : `<div class="prow" style="margin-top:9px">
-        <button class="mini" onclick="toggleDone('${q.id}', ${!q.done})">${q.done?'답변함 해제':'답변함 표시'}</button>
+        <button class="mini" onclick="toggleDone('${q.id}', ${!q.done})">${q.done?'처리 해제':'처리함 표시'}</button>
         <span class="sp"></span>
         <button class="mini primary" onclick="editAns('${q.id}')">${q.answer?'답변 수정':'답변 달기'}</button>
       </div>`}
@@ -868,7 +897,11 @@ async function setStatus(id, st){
   await dbPut(`live/polls/${id}/status`, st);
   render();
 }
-async function setSurvey(on){ await dbPut('live/meta/survey', !!on); render(); }
+async function setSurvey(on){
+  await dbPut('live/meta/survey', !!on);
+  if(on) await dbPut('live/meta/surveyAt', Date.now());
+  render();
+}
 async function setPhase(p){ await dbPut('live/meta/phase', p); render(); }
 
 function copyAll(){
