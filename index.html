@@ -412,6 +412,12 @@ const myVote = id => {
   return v && v[state.cid] ? v[state.cid].opt : null;
 };
 const surveyOpen = () => !!(state.db.meta && state.db.meta.survey);
+// 질문판 안내 문구: 행사 전('pre')과 시연 중('live')을 관리자가 전환한다
+const phase = () => ((state.db.meta && state.db.meta.phase) === 'live') ? 'live' : 'pre';
+const COMPOSE_T = {
+  pre:  'isSAFE에 대해 궁금한 점을 남겨주세요',
+  live: '시연을 보시다 궁금한 점이 생기면 남겨주세요',
+};
 
 /* ============================ RENDER ============================ */
 function render(){
@@ -497,10 +503,10 @@ function viewBoard(){
     </a>` : ''}
 
     <div class="card compose">
-      <p class="card-t">궁금한 점을 남겨주세요</p>
+      <p class="card-t">${COMPOSE_T[phase()]}</p>
       <p class="muted" style="margin:0 0 10px">이름은 표시되지 않습니다. 소속과 함께 모든 참석자에게 공개됩니다.</p>
       <textarea id="qin" rows="3" maxlength="300" oninput="onType()"
-        placeholder="예) 간이 해석과 상세 해석의 결과 차이가 어느 정도인가요?"></textarea>
+        placeholder="무엇이든 편하게 적어주세요."></textarea>
       <div class="row">
         <span class="muted" id="cnt">0 / 300</span>
         <button class="btn" id="qbtn" disabled onclick="postQ()">등록</button>
@@ -678,6 +684,16 @@ function viewAdmin(){
     </div></div>
 
     <div class="hr"></div>
+    <p class="card-t" style="margin:0 2px 8px">질문판 문구</p>
+    <div class="pcard"><div class="prow">
+      <span class="st st-${phase()==='live'?'open':'wait'}">${phase()==='live'?'시연 중':'행사 전'}</span>
+      <span class="muted" style="flex-basis:100%">${COMPOSE_T[phase()]}</span>
+      <span class="sp"></span>
+      <button class="mini primary" onclick="setPhase('${phase()==='live'?'pre':'live'}')">
+        ${phase()==='live'?'행사 전 문구로':'시연 중 문구로'}</button>
+    </div></div>
+
+    <div class="hr"></div>
     <p class="card-t" style="margin:0 2px 8px">초기화</p>
     <p class="muted" style="margin:0 2px 9px">한 번 누르면 확인으로 바뀌고, 다시 눌러야 지워집니다.</p>
     <div class="dz">
@@ -730,6 +746,7 @@ async function setStatus(id, st){
   render();
 }
 async function setSurvey(on){ await dbPut('live/meta/survey', !!on); render(); }
+async function setPhase(p){ await dbPut('live/meta/phase', p); render(); }
 
 function copyAll(){
   const txt = questions().slice().reverse()
