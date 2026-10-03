@@ -143,6 +143,19 @@ button{font-family:inherit; font-size:inherit; cursor:pointer}
 .q.mine{border-left:3px solid var(--o1)}
 .empty{text-align:center; color:var(--ink-3); font-size:13px; padding:26px 10px}
 
+.chip-done{background:var(--good-bg); color:var(--good-fg)}
+.ans{margin-top:10px; padding:11px 12px; background:var(--info-bg); color:var(--info-fg);
+  border-radius:10px; font-size:14px; line-height:1.6; white-space:pre-wrap; word-break:break-word}
+.ans .al{display:block; font-size:11px; font-weight:800; letter-spacing:.04em; color:var(--accent); margin-bottom:3px}
+.ansin{width:100%; margin-top:10px; border:1.5px solid var(--line); border-radius:11px; padding:11px;
+  font-family:inherit; font-size:14.5px; line-height:1.5; resize:vertical; color:var(--ink); background:var(--field)}
+.ansin:focus{outline:none; border-color:var(--o1)}
+
+.tabs{display:flex; gap:6px; margin-bottom:14px}
+.tab{flex:1; border:1.5px solid var(--line); background:var(--surface); color:var(--ink-3);
+  border-radius:10px; padding:10px; font-weight:700; font-size:13.5px}
+.tab.on{background:var(--btn-bg); color:var(--btn-fg); border-color:var(--btn-bg)}
+
 .pollrow{display:block; width:100%; text-align:left; background:var(--surface); border:0;
   border-radius:12px; box-shadow:var(--shadow); padding:13px 14px; margin-bottom:9px; color:var(--ink)}
 .pollrow .pt{display:block; font-size:14px; font-weight:700; line-height:1.45; word-break:keep-all}
@@ -299,6 +312,7 @@ const state = {
   seen: LS.get('seen', {}),   // 자동으로 띄운 적 있는 문항
   openSheet: null,        // 지금 화면에 띄운 문항 id
   isAdmin: hashIsAdmin(), armed: null,
+  adminTab: 'ops', editing: null, dzOpen: false, draft: {},
 };
 
 /* ---------- 유틸 ---------- */
@@ -570,9 +584,11 @@ function qCard(q){
       <span class="chip chip-aff" style="background:${a.color}">${a.name}</span>
       <span class="chip ${isLive?'chip-live':'chip-pre'}">${isLive?'현장':'사전'}</span>
       ${mine?'<span class="chip chip-pre">내 질문</span>':''}
+      ${(q.done && !q.answer)?'<span class="chip chip-done">현장 답변함</span>':''}
       <span class="time">${q.t ? hhmm(q.t) : ''}</span>
     </div>
     <div class="body">${esc(q.text)}</div>
+    ${q.answer ? `<div class="ans"><span class="al">답변</span>${esc(q.answer)}</div>` : ''}
   </div>`;
 }
 function onType(){
@@ -688,10 +704,22 @@ function results(p, status){
 
 /* ---------- 관리자 ---------- */
 function viewAdmin(){
-  const qs = questions();
-  const answered = POLLS.reduce((n,p)=> n + pollVotes(p).length, 0);
+  const n = questions().length;
   return `${header('')}
   <div class="wrap">
+    <div class="tabs">
+      <button class="tab${state.adminTab==='ops'?' on':''}" onclick="adminTab('ops')">운영</button>
+      <button class="tab${state.adminTab==='q'?' on':''}" onclick="adminTab('q')">질문 ${n}</button>
+    </div>
+    ${state.adminTab==='ops' ? adminOps() : adminQ()}
+  </div>`;
+}
+function adminTab(t){ state.adminTab = t; state.editing = null; render(); }
+
+function adminOps(){
+  const qs = questions();
+  const answered = POLLS.reduce((n,p)=> n + pollVotes(p).length, 0);
+  return `
     <div class="stat">
       <div><b>${qs.length}</b><span>등록 질문</span></div>
       <div><b>${answered}</b><span>누적 응답</span></div>
@@ -735,7 +763,12 @@ function viewAdmin(){
     </div></div>
 
     <div class="hr"></div>
-    <p class="card-t" style="margin:0 2px 8px">초기화</p>
+    <div class="prow" style="margin:0 2px 8px">
+      <p class="card-t" style="margin:0">초기화</p>
+      <span class="sp"></span>
+      <button class="mini" onclick="toggleDz()">${state.dzOpen?'접기':'펼치기'}</button>
+    </div>
+    ${state.dzOpen ? `
     <p class="muted" style="margin:0 2px 9px">한 번 누르면 확인으로 바뀌고, 다시 눌러야 지워집니다.</p>
     <div class="dz">
       ${dzRow('질문만 지우기', 'q')}
@@ -745,17 +778,66 @@ function viewAdmin(){
         <span>내 응답 기록 지우기<br><span class="muted">이 기기에서 다시 투표해 보려면</span></span>
         <button class="mini" onclick="clearMine()">지우기</button>
       </div>
-    </div>
+    </div>` : ''}
+  `;
+}
+function toggleDz(){ state.dzOpen = !state.dzOpen; state.armed = null; render(); }
 
-    <div class="hr"></div>
-    <div class="prow" style="margin:0 2px 8px">
-      <p class="card-t" style="margin:0">질문 목록</p>
+/* ---------- 관리자 · 질문 탭 ---------- */
+function adminQ(){
+  const qs = questions();
+  const unanswered = qs.filter(q=> !q.answer && !q.done).length;
+  return `
+    <div class="prow" style="margin:0 2px 10px">
+      <span class="muted">전체 ${qs.length} · 미처리 ${unanswered}</span>
       <span class="sp"></span>
       <button class="mini" onclick="copyAll()">전체 복사</button>
     </div>
-    ${qs.length ? qs.map(qCard).join('') : '<div class="empty">아직 등록된 질문이 없습니다.</div>'}
+    ${qs.length ? qs.map(adminQCard).join('') : '<div class="empty">아직 등록된 질문이 없습니다.</div>'}
+  `;
+}
+function adminQCard(q){
+  const a = affOf(q.aff);
+  const isLive = (q.t||0) >= EVENT_START;
+  const editing = state.editing === q.id;
+  const draft = state.draft[q.id] !== undefined ? state.draft[q.id] : (q.answer || '');
+  return `<div class="q">
+    <div class="meta">
+      <span class="chip chip-aff" style="background:${a.color}">${a.name}</span>
+      <span class="chip ${isLive?'chip-live':'chip-pre'}">${isLive?'현장':'사전'}</span>
+      ${q.done?'<span class="chip chip-done">답변함</span>':''}
+      <span class="time">${q.t ? hhmm(q.t) : ''}</span>
+    </div>
+    <div class="body">${esc(q.text)}</div>
+    ${q.answer && !editing ? `<div class="ans"><span class="al">답변</span>${esc(q.answer)}</div>` : ''}
+    ${editing ? `
+      <textarea class="ansin" id="ans-${q.id}" rows="3" placeholder="답변을 적어주세요."
+        oninput="state.draft['${q.id}']=this.value">${esc(draft)}</textarea>
+      <div class="prow" style="margin-top:8px">
+        <button class="mini" onclick="cancelAns('${q.id}')">취소</button>
+        <span class="sp"></span>
+        ${q.answer ? `<button class="mini danger" onclick="saveAns('${q.id}', true)">답변 삭제</button>` : ''}
+        <button class="mini primary" onclick="saveAns('${q.id}')">저장</button>
+      </div>`
+    : `<div class="prow" style="margin-top:9px">
+        <button class="mini" onclick="toggleDone('${q.id}', ${!q.done})">${q.done?'답변함 해제':'답변함 표시'}</button>
+        <span class="sp"></span>
+        <button class="mini primary" onclick="editAns('${q.id}')">${q.answer?'답변 수정':'답변 달기'}</button>
+      </div>`}
   </div>`;
 }
+function editAns(id){ state.editing = id; render(); setTimeout(()=>{ const el=document.getElementById('ans-'+id); if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); } },0); }
+function cancelAns(id){ delete state.draft[id]; state.editing = null; render(); }
+async function saveAns(id, remove){
+  const text = remove ? null : (state.draft[id] !== undefined ? state.draft[id].trim() : '');
+  if(!remove && !text){ toast('답변 내용을 적어주세요.'); return; }
+  await dbPut(`live/questions/${id}/answer`, text);
+  if(!remove) await dbPut(`live/questions/${id}/done`, true);
+  delete state.draft[id]; state.editing = null;
+  toast(remove ? '답변을 지웠습니다.' : '답변을 저장했습니다.');
+  render();
+}
+async function toggleDone(id, on){ await dbPut(`live/questions/${id}/done`, !!on); render(); }
 function dzRow(label, key){
   const armed = state.armed === key;
   return `<div class="dzrow">
