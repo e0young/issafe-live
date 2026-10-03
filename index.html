@@ -143,6 +143,12 @@ button{font-family:inherit; font-size:inherit; cursor:pointer}
 .q.mine{border-left:3px solid var(--o1)}
 .empty{text-align:center; color:var(--ink-3); font-size:13px; padding:26px 10px}
 
+.pollrow{display:block; width:100%; text-align:left; background:var(--surface); border:0;
+  border-radius:12px; box-shadow:var(--shadow); padding:13px 14px; margin-bottom:9px; color:var(--ink)}
+.pollrow .pt{display:block; font-size:14px; font-weight:700; line-height:1.45; word-break:keep-all}
+.pollrow .pb{display:flex; align-items:center; gap:8px; margin-top:8px}
+.pollrow .go{margin-left:auto; font-size:12.5px; font-weight:700; color:var(--accent)}
+
 /* poll sheet */
 .overlay{position:fixed; inset:0; z-index:40; background:rgba(9,20,40,.55); display:flex; align-items:flex-end; justify-content:center}
 .sheet{width:100%; max-width:520px; background:var(--bg); border-radius:20px 20px 0 0; max-height:92dvh;
@@ -528,6 +534,25 @@ function viewBoard(){
       </div>
     </div>
 
+    ${(()=>{
+      // 한 번이라도 연 문항만 보여준다 (다음 질문이 미리 보이지 않도록)
+      const shown = POLLS.filter(p=> pollStatus(p.id) !== 'wait');
+      if(!shown.length) return '';
+      return `<div class="qhead"><h2>투표</h2>
+          <span class="count">${shown.length}개</span></div>
+        ${shown.map(p=>{
+          const st = pollStatus(p.id), mine = myVote(p.id) !== null;
+          const cta = st==='open' ? (mine ? '결과 보기' : '참여하기') : '결과 보기';
+          return `<button class="pollrow" onclick="openSheet('${p.id}')">
+            <span class="pt">${p.title}</span>
+            <span class="pb">
+              <span class="st st-${st}">${st==='open'?'진행 중':'마감'}</span>
+              <span class="go">${cta} →</span>
+            </span>
+          </button>`;
+        }).join('')}`;
+    })()}
+
     <div class="qhead">
       <h2>참석자 질문</h2>
       <span class="count">전체 ${qs.length} · 사전 ${pre} · 현장 ${qs.length - pre}</span>
@@ -605,6 +630,7 @@ async function vote(id, i){
   render();
 }
 function closeSheet(){ state.openSheet = null; render(); }
+function openSheet(id){ state.openSheet = id; render(); }
 
 /* 소속마다 "가장 많이 고른 답"을 카드로 먼저 보여주고, 전체 분포는 아래에 작게 둔다. */
 function results(p, status){
