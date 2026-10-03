@@ -109,10 +109,9 @@ button{font-family:inherit; font-size:inherit; cursor:pointer}
 .onb .ask{font-size:16px; font-weight:700; margin:30px 0 4px; text-wrap:balance}
 .onb .note{font-size:12.5px; color:var(--ink-3); margin-bottom:18px}
 .affs{display:grid; gap:9px}
-.aff{background:var(--surface); border:1.5px solid var(--line); border-radius:12px; padding:15px 16px;
-  text-align:left; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:11px}
+.aff{background:var(--surface); border:1.5px solid var(--line); border-radius:12px; padding:16px;
+  text-align:left; font-weight:700; font-size:16px; color:var(--ink); display:flex; align-items:center; gap:11px}
 .aff .dot{width:9px; height:9px; border-radius:50%; flex:none}
-.aff small{display:block; font-weight:500; color:var(--ink-3); font-size:12px; margin-top:1px}
 .privacy{margin-top:20px; background:var(--info-bg); color:var(--info-fg); border-radius:12px;
   padding:13px 14px; font-size:12.5px; text-align:left; line-height:1.6}
 
@@ -240,10 +239,10 @@ const SURVEY_URL = 'https://naver.me/Gow7xnOp';
 const EVENT_START = Date.parse('2026-10-08T11:00:00+09:00');
 
 const AFFS = [
-  {id:'yard', name:'조선소',        desc:'설계·건조 관련',   color:'var(--o1)'},
-  {id:'navy', name:'해군·군',       desc:'운용·소요 관련',   color:'var(--o2)'},
-  {id:'acad', name:'학계·연구기관', desc:'연구·해석 관련',   color:'var(--o3)'},
-  {id:'etc',  name:'기타',          desc:'방산업체·기관 등', color:'var(--o4)'},
+  {id:'yard', name:'조선소',        color:'var(--o1)'},
+  {id:'navy', name:'해군',          color:'var(--o2)'},
+  {id:'ind',  name:'산업체',        color:'var(--o3)'},
+  {id:'res',  name:'연구기관·학계', color:'var(--o4)'},
 ];
 const affOf = id => AFFS.find(a=>a.id===id) || AFFS[3];
 
@@ -282,9 +281,12 @@ function clientId(){
 
 function hashIsAdmin(){ try{ return location.hash === '#admin'; }catch(e){ return false; } }
 
+// 소속 목록이 바뀌었을 수 있으므로, 저장된 값이 지금 목록에 없으면 다시 고르게 한다
+const savedAff = AFFS.some(a=>a.id === LS.get('aff', null)) ? LS.get('aff', null) : null;
+
 const state = {
-  screen: LS.get('aff', null) ? 'board' : 'onboard',
-  myAff: LS.get('aff', null),
+  screen: savedAff ? 'board' : 'onboard',
+  myAff: savedAff,
   myQ: LS.get('myq', []),
   cid: clientId(),
   db: {},                 // live/ 의 사본
@@ -354,24 +356,43 @@ function applyPatch(path, data){
   Object.keys(data || {}).forEach(k=>{ if(data[k]===null) delete node[k]; else node[k] = data[k]; });
 }
 
-let es = null, retry = 0;
+let es = null, fails = 0, polling = null;
 function connect(){
+  if(polling) return;                       // 이미 대체 경로로 돌고 있으면 그대로 둔다
   try{ if(es) es.close(); }catch(e){}
-  es = new EventSource(url('live'));
+  try{ es = new EventSource(url('live')); }catch(e){ startPolling(); return; }
   es.addEventListener('put', ev=>{
     const m = JSON.parse(ev.data); applyPut(m.path, m.data); online(true); render();
   });
   es.addEventListener('patch', ev=>{
     const m = JSON.parse(ev.data); applyPatch(m.path, m.data); online(true); render();
   });
-  es.onopen = ()=>{ retry = 0; online(true); };
+  es.onopen = ()=>{ fails = 0; online(true); };
   es.onerror = ()=>{
     online(false);
-    retry = Math.min(retry+1, 6);
-    setTimeout(connect, 1000 * retry);
+    fails++;
+    // 스트리밍이 두 번 실패하면 주기적으로 읽어오는 방식으로 바꾼다
+    if(fails >= 2){ try{ es.close(); }catch(e){} startPolling(); return; }
+    setTimeout(connect, 1500);
   };
 }
-function online(ok){ document.getElementById('conn').hidden = !!ok; }
+function startPolling(){
+  if(polling) return;
+  const tick = async ()=>{
+    try{
+      const r = await fetch(url('live'), {cache:'no-store'});
+      if(!r.ok) throw new Error('read failed');
+      const data = await r.json();
+      const next = JSON.stringify(data || {});
+      online(true);
+      if(next !== lastSnap){ lastSnap = next; state.db = data || {}; render(); }
+    }catch(e){ online(false); }
+  };
+  tick();
+  polling = setInterval(tick, 2500);
+}
+let lastSnap = '';
+function online(ok){ const el = document.getElementById('conn'); if(el) el.hidden = !!ok; }
 
 /* ---------- 데이터 읽기 ---------- */
 const questions = () => {
@@ -405,11 +426,25 @@ function render(){
   const closed = POLLS.find(p=> pollStatus(p.id) === 'closed' && state.seen[p.id] === 'open');
   if(closed){ state.openSheet = closed.id; state.seen[closed.id] = 'closed'; LS.set('seen', state.seen); }
 
+  // 작성 중인 질문이 날아가지 않도록 입력 상태를 보존한다
+  const ta = document.getElementById('qin');
+  const keep = ta ? { v: ta.value, s: ta.selectionStart, e: ta.selectionEnd, f: document.activeElement === ta } : null;
+
   const app = document.getElementById('app');
   app.className = 'app' + (state.screen==='admin' ? ' adm' : '');
   app.innerHTML = state.screen==='onboard' ? viewOnboard()
                 : state.screen==='admin'   ? viewAdmin()
                 :                            viewBoard();
+
+  if(keep && keep.v){
+    const el = document.getElementById('qin');
+    if(el){
+      el.value = keep.v;
+      document.getElementById('cnt').textContent = `${keep.v.length} / 300`;
+      document.getElementById('qbtn').disabled = keep.v.trim().length < 2;
+      if(keep.f){ el.focus(); try{ el.setSelectionRange(keep.s, keep.e); }catch(e){} }
+    }
+  }
 
   const old = document.getElementById('ov'); if(old) old.remove();
   if(state.screen==='board' && state.openSheet){
@@ -437,7 +472,7 @@ function viewOnboard(){
     <div class="affs">
       ${AFFS.map(a=>`<button class="aff" onclick="pickAff('${a.id}')">
         <span class="dot" style="background:${a.color}"></span>
-        <span>${a.name}<small>${a.desc}</small></span></button>`).join('')}
+        <span>${a.name}</span></button>`).join('')}
     </div>
     <div class="privacy">
       이름과 연락처는 받지 않습니다. 올리신 질문은 소속과 함께 모든 참석자에게 공개되며,
