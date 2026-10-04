@@ -293,7 +293,7 @@ const POLLS = [
   { id:'q4',
     title:'isSAFE를 실제로 쓰게 된다면 어떤 방식이 맞겠습니까?',
     note:'2단계 개발 계획에 반영할 예정입니다.',
-    options:['기관 내부에 설치해 전체 사용','필요한 모듈만 떼어 기존 체계에 연계','기계연에 의뢰하거나 공동 과제로 활용'] },
+    options:['기관 내부에 설치해 사용','필요한 모듈만 떼어 기존 체계에 연계','기계연에 의뢰하거나 공동 과제로 활용'] },
 ];
 const OPT_COLORS = ['var(--o1)','var(--o2)','var(--o3)','var(--o4)'];
 
@@ -583,7 +583,7 @@ function viewBoard(){
       // 한 번이라도 연 문항만 보여준다 (다음 질문이 미리 보이지 않도록)
       const shown = POLLS.filter(p=> pollStatus(p.id) !== 'wait');
       if(!shown.length) return '';
-      return `<div class="qhead"><h2>투표</h2>
+      return `<div class="qhead"><h2>현장 의견</h2>
           <span class="count">${shown.length}개</span></div>
         ${shown.map(p=>{
           const st = pollStatus(p.id), mine = myVote(p.id) !== null;
@@ -653,7 +653,7 @@ function viewPoll(id){
   return `<div class="overlay" id="ov"><div class="sheet">
     <div class="grip"></div>
     <div class="top">${closed
-      ? '<span class="closed-label">투표 마감</span>'
+      ? '<span class="closed-label">의견 마감</span>'
       : '<span class="live-dot"></span><span class="live-label">진행 중</span>'}</div>
     <h3>${p.title}</h3>
     ${p.note ? `<p class="qnote">${p.note}</p>` : '<div style="height:10px"></div>'}
